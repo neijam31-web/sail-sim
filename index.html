@@ -166,7 +166,7 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script>
-    const socket = io('https://sail-sim.onrender.com');
+    const socket = io(); // Automatically connects to the host
     let currentRoom = "";
     let isHost = false;
     let myBoatType = "monohull";
@@ -175,6 +175,9 @@
 
     let isSingleplayer = false, isTutorial = false, tutorialStep = 0, waitingForTutorial = false;
     let ocsPenalty = false;
+    let raceStartTime = Date.now(); // Fixed: Initialized to prevent "Sky Freeze"
+    let raceActive = false;
+    let uiHidden = false;
 
     // --- Apply Mobile Toggle Check ---
     function applyMobileToggle() {
@@ -193,7 +196,7 @@
         windSpeedKnots = parseFloat(document.getElementById('single-wind-speed').value) || 15;
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('game-ui').style.display = 'block';
-        applyMobileToggle(); // Check toggle before starting
+        applyMobileToggle();
         spawnMyBoat(myBoatType);
         raceStartTime = Date.now() + 15000; 
         gameActive = true;
@@ -204,14 +207,11 @@
         myBoatType = document.getElementById('boat-select').value;
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('game-ui').style.display = 'block';
-
-        applyMobileToggle(); // Check toggle before starting
-
+        applyMobileToggle();
         document.getElementById('tutorial-ui').style.display = 'block';
         document.getElementById('timer-display').style.display = 'none';
         document.getElementById('start-msg').style.display = 'none';
         document.getElementById('targetDisplay').style.display = 'none';
-
         spawnMyBoat(myBoatType); myBoatGroup.position.set(0, 0, 0); 
         gameActive = true; raceActive = true; tutorialStep = 1; updateTutorialText();
     }
@@ -262,8 +262,7 @@
         currentRoom = data.roomName; isHost = data.isHost;
         document.getElementById('lobby-title').innerText = "Room: " + currentRoom; showMenu('menu-lobby');
         if (isHost) document.getElementById('btn-start-race').style.display = 'block';
-
-        applyMobileToggle(); // Check toggle before starting
+        applyMobileToggle();
         spawnMyBoat(myBoatType); document.getElementById('ui-layer').style.background = 'transparent'; document.getElementById('game-ui').style.display = 'block';
     });
 
@@ -293,7 +292,7 @@
     const land = new THREE.Mesh(new THREE.RingGeometry(180, 250, 64), new THREE.MeshPhongMaterial({ color: 0x33aa55, flatShading: true }));
     land.rotation.x = -Math.PI / 2; land.position.y = 0.1; scene.add(land);
 
-    // Environment Objects
+    // Visual Objects
     const windLines = [];
     const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,3)]);
     const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 }); 
@@ -301,7 +300,7 @@
         const line = new THREE.Line(lineGeo, lineMat); line.position.set((Math.random() - 0.5) * 150 + 50, 0.1, (Math.random() - 0.5) * 150 + 50); scene.add(line); windLines.push(line);
     }
 
-    const wakeParticles = []; const wakeGeo = new THREE.PlaneGeometry(1.5, 1.5); const wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
+    const wakeParticles = []; const wakeGeo = new THREE.PlaneGeometry(0.4, 0.4); const wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
     for(let i = 0; i < 50; i++) {
         const p = new THREE.Mesh(wakeGeo, wakeMat.clone()); p.rotation.x = -Math.PI / 2; p.position.y = 0.1; p.visible = false; scene.add(p); wakeParticles.push({ mesh: p, life: 0 });
     }
@@ -347,37 +346,25 @@
         ghost.position.set(info.x, 0, info.z); ghost.rotation.y = info.rotation; if (info.heeling) ghost.rotation.z = info.heeling; scene.add(ghost); otherBoats[id] = ghost;
     }
 
-    // --- Inputs & Variables ---
+    // --- Core Logic ---
     let gameActive = false;
     const boatState = { rotation: Math.PI, velocity: 0, sailAngle: 0, targetSailAngle: 0, heeling: 0, speedMultiplier: 1.0, heelMultiplier: 1.0 };
     const keys = {};
     let tackCooldown = 0, autoUpwind = false, isTacking = false, tackDirection = 0;
 
-    // Keyboard Listeners
     window.addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') autoUpwind = !autoUpwind; });
     window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // --- MOBILE TOUCH LISTENERS ---
+    // Touch Support
     function setupTouchBtn(id, keyCode, toggle = false) {
-        const btn = document.getElementById(id);
-        if(!btn) return;
-        btn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (toggle) { autoUpwind = !autoUpwind; } 
-            else { keys[keyCode] = true; }
-        });
+        const btn = document.getElementById(id); if(!btn) return;
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); if (toggle) { autoUpwind = !autoUpwind; } else { keys[keyCode] = true; } });
         btn.addEventListener('touchend', (e) => { e.preventDefault(); if (!toggle) keys[keyCode] = false; });
-        btn.addEventListener('contextmenu', e => e.preventDefault()); 
     }
-    setupTouchBtn('btn-left', 'ArrowLeft');
-    setupTouchBtn('btn-right', 'ArrowRight');
-    setupTouchBtn('btn-luff', 'Space');
-    setupTouchBtn('btn-tack', 'Enter');
-    setupTouchBtn('btn-upwind', 'ShiftLeft', true);
+    setupTouchBtn('btn-left', 'ArrowLeft'); setupTouchBtn('btn-right', 'ArrowRight'); setupTouchBtn('btn-luff', 'Space'); setupTouchBtn('btn-tack', 'Enter'); setupTouchBtn('btn-upwind', 'ShiftLeft', true);
 
     camera.position.set(55, 15, 130); 
 
-    // --- Core Game Loop ---
     function update() {
         if (!myBoatGroup) return; 
         if (!gameActive) { camera.lookAt(myBoatGroup.position); return; }
@@ -396,6 +383,7 @@
         const relWindAngle = Math.atan2(-dirX, -dirZ), absWindAngle = Math.abs(relWindAngle);
         document.getElementById('arrow').style.transform = `rotate(${relWindAngle}rad)`;
 
+        // Tutorial Advance Logic
         if (isTutorial && !waitingForTutorial) {
             if (tutorialStep === 1 && (keys['ArrowLeft'] || keys['ArrowRight'])) advanceTutorial(2, 2000);
             else if (tutorialStep === 2 && absWindAngle > 2.8 && boatState.velocity > 0.02) advanceTutorial(3, 3500);
@@ -407,77 +395,32 @@
         if (tackCooldown > 0) tackCooldown--;
         if (keys['Enter'] && tackCooldown === 0 && absWindAngle < 1.6 && !isTacking) { isTacking = true; tackCooldown = 180; autoUpwind = false; tackDirection = relWindAngle > 0 ? -1 : 1; }
 
-        if (isTacking) {
-            boatState.velocity *= 0.985; boatState.rotation += tackDirection * 0.025; 
-            if ((tackDirection === -1 && relWindAngle < -0.8) || (tackDirection === 1 && relWindAngle > 0.8)) { isTacking = false; tackDirection = 0; }
-        } else {
-            if (autoUpwind) boatState.rotation += ((relWindAngle >= 0 ? 0.75 : -0.75) - relWindAngle) * 0.05;  
-            else { if (keys['ArrowLeft']) boatState.rotation += 0.02; if (keys['ArrowRight']) boatState.rotation -= 0.02; }
-        }
+        if (isTacking) { boatState.velocity *= 0.985; boatState.rotation += tackDirection * 0.025; if ((tackDirection === -1 && relWindAngle < -0.8) || (tackDirection === 1 && relWindAngle > 0.8)) { isTacking = false; tackDirection = 0; } } else { if (autoUpwind) boatState.rotation += ((relWindAngle >= 0 ? 0.75 : -0.75) - relWindAngle) * 0.05; else { if (keys['ArrowLeft']) boatState.rotation += 0.02; if (keys['ArrowRight']) boatState.rotation -= 0.02; } }
 
-        let power = 0;
-        const basePower = windSpeedKnots / 750; 
-        const windPowerMultiplier = (Math.sin(absWindAngle) * 0.8) + (Math.sin(absWindAngle / 2) * 0.5); 
-
-        if (keys['Space']) {
-            boatState.targetSailAngle = Math.min(1.5, Math.max(-1.5, -relWindAngle));
-            document.getElementById('status').innerText = "LUFFING"; document.getElementById('status').style.color = "#aaaaaa";
-        } else if (absWindAngle < 0.5 && !isTacking) { 
-            boatState.targetSailAngle = 0; boatState.velocity *= 0.9; 
-            document.getElementById('status').innerText = "IN IRONS"; document.getElementById('status').style.color = "#ff4d4d";
-        } else {
-            boatState.targetSailAngle = Math.min(1.2, Math.max(-1.2, -relWindAngle * 0.6));
-            power = windPowerMultiplier * basePower * boatState.speedMultiplier; 
-            if (isTacking) { document.getElementById('status').innerText = "TACKING"; document.getElementById('status').style.color = "#ffd700"; } 
-            else if (autoUpwind) { document.getElementById('status').innerText = "AUTO CLOSE-HAULED"; document.getElementById('status').style.color = "#00ff00"; } 
-            else { document.getElementById('status').innerText = absWindAngle < 1.8 ? "CLOSE HAULED" : "DOWNWIND"; document.getElementById('status').style.color = "#00f2ff"; }
-        }
+        let power = 0; const basePower = windSpeedKnots / 750; const windPowerMultiplier = (Math.sin(absWindAngle) * 0.8) + (Math.sin(absWindAngle / 2) * 0.5); 
+        if (keys['Space']) { boatState.targetSailAngle = Math.min(1.5, Math.max(-1.5, -relWindAngle)); document.getElementById('status').innerText = "LUFFING"; document.getElementById('status').style.color = "#aaaaaa"; } else if (absWindAngle < 0.5 && !isTacking) { boatState.targetSailAngle = 0; boatState.velocity *= 0.9; document.getElementById('status').innerText = "IN IRONS"; document.getElementById('status').style.color = "#ff4d4d"; } else { boatState.targetSailAngle = Math.min(1.2, Math.max(-1.2, -relWindAngle * 0.6)); power = windPowerMultiplier * basePower * boatState.speedMultiplier; if (isTacking) { document.getElementById('status').innerText = "TACKING"; document.getElementById('status').style.color = "#ffd700"; } else if (autoUpwind) { document.getElementById('status').innerText = "AUTO CLOSE-HAULED"; document.getElementById('status').style.color = "#00ff00"; } else { document.getElementById('status').innerText = absWindAngle < 1.8 ? "CLOSE HAULED" : "DOWNWIND"; document.getElementById('status').style.color = "#00f2ff"; } }
 
         boatState.sailAngle += (boatState.targetSailAngle - boatState.sailAngle) * 0.1; mySailPivot.rotation.y = boatState.sailAngle;
         boatState.velocity = (boatState.velocity + power) * 0.96; if (boatState.velocity < 0.001) boatState.velocity = 0; 
         myBoatGroup.position.x += dirX * boatState.velocity; myBoatGroup.position.z += dirZ * boatState.velocity; myBoatGroup.rotation.y = boatState.rotation;
         boatState.heeling += (Math.max(-0.25, Math.min(0.25, boatState.targetSailAngle * (boatState.velocity * 5))) * boatState.heelMultiplier - boatState.heeling) * 0.05; myBoatGroup.rotation.z = boatState.heeling;
 
-        if (boatState.velocity > 0.05 && Math.random() < 0.6) {
-            const p = wakeParticles[wakeIndex]; p.life = 1.0;
-            p.mesh.position.set(myBoatGroup.position.x + dirX * -2.2 + (Math.random() - 0.5) * 0.8, 0.1, myBoatGroup.position.z + dirZ * -2.2 + (Math.random() - 0.5) * 0.8);
-            p.mesh.scale.set(1, 1, 1); p.mesh.rotation.z = Math.random() * Math.PI; p.mesh.visible = true; wakeIndex = (wakeIndex + 1) % wakeParticles.length;
-        }
+        // Visual FX Updates
+        if (boatState.velocity > 0.05 && Math.random() < 0.6) { const p = wakeParticles[wakeIndex]; p.life = 1.0; p.mesh.position.set(myBoatGroup.position.x + dirX * -2.2, 0.1, myBoatGroup.position.z + dirZ * -2.2); p.mesh.visible = true; wakeIndex = (wakeIndex + 1) % wakeParticles.length; }
         wakeParticles.forEach(p => { if (p.life > 0) { p.life -= 0.015; p.mesh.scale.x += 0.03; p.mesh.scale.y += 0.03; p.mesh.material.opacity = p.life * 0.5; if (p.life <= 0) p.mesh.visible = false; } });
 
-        const startLineZ = 80; const startLeftX = 40; const startRightX = 70;
+        // Race Tracking
         if (!isTutorial && currentWpIndex < waypoints.length) {
-            if (currentWpIndex === 0) {
-                if (!raceActive) {
-                    if (myBoatGroup.position.z < startLineZ) { ocsPenalty = true; document.getElementById('targetDisplay').innerText = "I-FLAG: OCS! RETURN AROUND ENDS!"; document.getElementById('targetDisplay').style.color = "#ff0000"; } 
-                    else if (!ocsPenalty) { document.getElementById('targetDisplay').innerText = "HOLD POSITION BEHIND LINE..."; document.getElementById('targetDisplay').style.color = "#ffd700"; }
-                    if (ocsPenalty && myBoatGroup.position.z >= startLineZ && (myBoatGroup.position.x <= startLeftX || myBoatGroup.position.x >= startRightX)) ocsPenalty = false;
-                } else {
-                    if (ocsPenalty) {
-                        document.getElementById('targetDisplay').innerText = "PENALTY! ROUND THE END TO CLEAR!"; document.getElementById('targetDisplay').style.color = "#ff0000";
-                        if (myBoatGroup.position.z >= startLineZ && (myBoatGroup.position.x <= startLeftX || myBoatGroup.position.x >= startRightX)) ocsPenalty = false;
-                    } else {
-                        document.getElementById('targetDisplay').innerText = "RACING! CROSS THE LINE!"; document.getElementById('targetDisplay').style.color = "#00ff00";
-                        if (myBoatGroup.position.z < startLineZ && myBoatGroup.position.x > startLeftX && myBoatGroup.position.x < startRightX) currentWpIndex = 1; 
-                    }
-                }
-            } else {
-                const wp = waypoints[currentWpIndex]; const dist = Math.hypot(myBoatGroup.position.x - wp.x, myBoatGroup.position.z - wp.z);
-                if (dist < wp.radius) { currentWpIndex++; if (currentWpIndex >= waypoints.length) { document.getElementById('targetDisplay').innerText = "🏁 COURSE COMPLETE! 🏁"; document.getElementById('targetDisplay').style.color = "#00ff00"; } } 
-                else { document.getElementById('targetDisplay').innerText = `TARGET: ${wp.name} (${Math.round(dist)}m)`; document.getElementById('targetDisplay').style.color = "#00f2ff"; }
-            }
+            const wp = waypoints[currentWpIndex]; const dist = Math.hypot(myBoatGroup.position.x - wp.x, myBoatGroup.position.z - wp.z);
+            if (dist < wp.radius) { currentWpIndex++; } else { document.getElementById('targetDisplay').innerText = `TARGET: ${wp.name} (${Math.round(dist)}m)`; }
         }
 
         const tCamX = myBoatGroup.position.x - dirX * 16, tCamY = 9, tCamZ = myBoatGroup.position.z - dirZ * 16;
         camera.position.x += (tCamX - camera.position.x) * 0.05; camera.position.y += (tCamY - camera.position.y) * 0.05; camera.position.z += (tCamZ - camera.position.z) * 0.05; camera.lookAt(myBoatGroup.position);
-
-        const animSpeed = Math.max(0.1, windSpeedKnots / 30);
-        windLines.forEach(line => { line.position.z += animSpeed; if (line.position.z > myBoatGroup.position.z + 50) { line.position.set((Math.random() - 0.5) * 120 + myBoatGroup.position.x, 0.1, (Math.random() - 0.5) * 120 + myBoatGroup.position.z - 50); } });
+        windLines.forEach(line => { line.position.z += 0.5; if (line.position.z > myBoatGroup.position.z + 50) line.position.z = myBoatGroup.position.z - 50; });
         document.getElementById('speedDisplay').innerHTML = (boatState.velocity * 40).toFixed(1) + " kn";
 
-        if (!isSingleplayer && !isTutorial && boatState.velocity > 0.001) {
-            socket.emit('playerMovement', { roomName: currentRoom, movementData: { x: myBoatGroup.position.x, z: myBoatGroup.position.z, rotation: boatState.rotation, heeling: boatState.heeling, windSpeed: isHost ? windSpeedKnots : undefined } });
-        }
+        if (!isSingleplayer && !isTutorial && boatState.velocity > 0.001) { socket.emit('playerMovement', { roomName: currentRoom, movementData: { x: myBoatGroup.position.x, z: myBoatGroup.position.z, rotation: boatState.rotation, heeling: boatState.heeling } }); }
     }
 
     function animate() { requestAnimationFrame(animate); update(); renderer.render(scene, camera); }
