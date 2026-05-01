@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Regatta - The Ultimate Edition</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #c6e2ff; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+
+        /* --- MENU UI --- */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100; display: flex; justify-content: center; align-items: center; background: radial-gradient(circle, #0a1e32 0%, #000000 100%); }
+        .menu-box { background: rgba(10, 30, 50, 0.95); padding: 40px; border-radius: 12px; border: 2px solid #00f2ff; color: white; text-align: center; box-shadow: 0 0 30px rgba(0, 242, 255, 0.3); width: 400px; max-width: 90%; box-sizing: border-box; }
+        .menu-title { font-size: 48px; font-weight: bold; color: #00f2ff; letter-spacing: 2px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(0, 242, 255, 0.5); }
+        .btn { background: rgba(0, 242, 255, 0.1); border: 2px solid #00f2ff; color: #00f2ff; padding: 12px 20px; font-size: 18px; font-weight: bold; border-radius: 6px; cursor: pointer; margin: 10px 0; width: 100%; transition: all 0.2s ease; text-transform: uppercase; }
+        .btn:hover { background: #00f2ff; color: #000; box-shadow: 0 0 15px rgba(0, 242, 255, 0.6); transform: scale(1.02); }
+        .btn-tutorial { border-color: #00ff00; color: #00ff00; background: rgba(0, 255, 0, 0.1); }
+        .btn-tutorial:hover { background: #00ff00; color: #000; box-shadow: 0 0 15px rgba(0, 255, 0, 0.6); }
+        .input-field { padding: 12px; font-size: 16px; margin-bottom: 15px; width: 100%; background: #05101a; border: 1px solid #00f2ff; color: white; border-radius: 4px; box-sizing: border-box; }
+        .room-item { background: rgba(255,255,255,0.1); padding: 10px; margin-bottom: 5px; cursor: pointer; border-radius: 4px; border: 1px solid transparent; text-align: left; }
+        .room-item:hover { border-color: #00f2ff; background: rgba(0,242,255,0.2); }
+        .label { color:#00f2ff; display:block; margin-bottom:5px; text-align:left; font-size:14px; font-weight:bold; }
+
+        .mobile-toggle-container { margin: 20px 0; padding: 15px; background: rgba(0,255,0,0.1); border: 1px solid #00ff00; border-radius: 8px; }
+        .mobile-toggle-container label { color: #00ff00; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+        /* --- GAME UI --- */
+        #game-ui { display: none; }
+        #home-btn { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255, 77, 77, 0.1); border: 2px solid #ff4d4d; color: #ff4d4d; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; z-index: 20; transition: 0.2s; text-transform: uppercase; }
+        #home-btn:hover { background: #ff4d4d; color: white; box-shadow: 0 0 10px rgba(255, 77, 77, 0.6); }
+
+        #ui { position: absolute; top: 20px; left: 20px; color: white; background: rgba(10, 30, 50, 0.85); padding: 20px; border-radius: 12px; pointer-events: none; border: 1px solid rgba(255,255,255,0.1); z-index: 10; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .stats { font-size: 32px; font-weight: bold; color: #00f2ff; letter-spacing: -1px; }
+        .course-tracker { font-size: 16px; margin-top: 10px; color: #ffd700; font-weight: bold; }
+        #timer-display { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); font-size: 48px; font-weight: bold; color: white; z-index: 10; text-shadow: 2px 2px 4px #000;}
+        #start-msg { position: absolute; top: 130px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: yellow; z-index: 10; text-shadow: 1px 1px 2px #000;}
+        .hint { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 20px; line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
+        .wind-indicator { position: absolute; top: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 2px solid white; display: flex; align-items: center; justify-content: center; z-index: 10; }
+        #arrow { font-size: 30px; color: white; transition: transform 0.1s; }
+
+        #tutorial-ui { display: none; position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); background: rgba(10, 30, 50, 0.95); border: 2px solid #00ff00; padding: 20px; border-radius: 12px; color: white; text-align: center; font-size: 18px; z-index: 20; width: 90%; max-width: 450px; box-shadow: 0 0 20px rgba(0,255,0,0.3); box-sizing: border-box;}
+
+        /* --- MOBILE TOUCH CONTROLS --- */
+        #touch-controls { display: none; position: absolute; bottom: 20px; left: 0; width: 100vw; padding: 0 20px; box-sizing: border-box; justify-content: space-between; z-index: 50; pointer-events: none; }
+        .touch-group { display: flex; gap: 10px; pointer-events: auto; }
+        .touch-btn { background: rgba(10, 30, 50, 0.8); border: 2px solid #00f2ff; color: #00f2ff; border-radius: 50%; width: 60px; height: 60px; font-size: 24px; font-weight: bold; display: flex; justify-content: center; align-items: center; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+        .touch-btn:active { background: #00f2ff; color: #000; }
+        .touch-action { width: auto; padding: 0 15px; border-radius: 12px; font-size: 14px; }
+        .touch-luff { border-color: #ff4d4d; color: #ff4d4d; } .touch-luff:active { background: #ff4d4d; color: #fff; }
+        .touch-tack { border-color: #ffd700; color: #ffd700; } .touch-tack:active { background: #ffd700; color: #000; }
+        .touch-upwind { border-color: #00ff00; color: #00ff00; } .touch-upwind:active { background: #00ff00; color: #000; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <div id="menu-main" class="menu-box">
+        <div class="menu-title">3D REGATTA</div>
+
+        <label class="label">Select Your Vessel:</label>
+        <select id="boat-select" class="input-field">
+            <option value="monohull">Classic Monohull</option>
+            <option value="catamaran">F50 Catamaran (SailGP)</option>
+        </select>
+
+        <div class="mobile-toggle-container">
+            <label>
+                <input type="checkbox" id="mobile-toggle" style="transform: scale(1.5);">
+                Enable Mobile Controls
+            </label>
+        </div>
+
+        <button class="btn btn-tutorial" onclick="startTutorial()">Play Tutorial</button>
+        <button class="btn" onclick="showMenu('menu-single')">Singleplayer</button>
+        <button class="btn" onclick="showMenu('menu-multi')">Multiplayer</button>
+    </div>
+
+    <div id="menu-single" class="menu-box" style="display:none;">
+        <h2>Singleplayer Practice</h2>
+        <label class="label">Wind Speed (0 - 40 Knots):</label>
+        <input type="number" id="single-wind-speed" class="input-field" value="15" min="0" max="40">
+        <button class="btn" onclick="startSingleplayer()">Set Sail</button>
+        <button class="btn" style="border-color:#ff4d4d; color:#ff4d4d;" onclick="showMenu('menu-main')">Back</button>
+    </div>
+
+    <div id="menu-multi" class="menu-box" style="display:none;">
+        <h2>Multiplayer Network</h2>
+        <button class="btn" onclick="showMenu('menu-host')">Host a Room</button>
+        <button class="btn" onclick="openJoinMenu()">Join a Room</button>
+        <button class="btn" style="border-color:#ff4d4d; color:#ff4d4d;" onclick="showMenu('menu-main')">Back</button>
+    </div>
+
+    <div id="menu-host" class="menu-box" style="display:none;">
+        <h2>Create Room</h2>
+        <input type="text" id="host-room-name" class="input-field" placeholder="Enter Room Name...">
+        <div style="display:flex; justify-content: space-between;">
+            <div style="width: 48%;">
+                <label class="label">Max Players:</label>
+                <input type="number" id="host-max-players" class="input-field" value="4" min="2" max="10">
+            </div>
+            <div style="width: 48%;">
+                <label class="label">Wind Speed (kn):</label>
+                <input type="number" id="host-wind-speed" class="input-field" value="15" min="0" max="40">
+            </div>
+        </div>
+        <button class="btn" onclick="createRoom()">Create & Wait</button>
+        <button class="btn" style="border-color:#ff4d4d; color:#ff4d4d;" onclick="showMenu('menu-multi')">Back</button>
+    </div>
+
+    <div id="menu-join" class="menu-box" style="display:none;">
+        <h2>Available Rooms</h2>
+        <div id="room-list" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;">
+            <div style="color: #aaa; text-align: center;">Searching for rooms...</div>
+        </div>
+        <button class="btn" onclick="openJoinMenu()">Refresh List</button>
+        <button class="btn" style="border-color:#ff4d4d; color:#ff4d4d;" onclick="showMenu('menu-multi')">Back</button>
+    </div>
+
+    <div id="menu-lobby" class="menu-box" style="display:none;">
+        <h2 id="lobby-title">Lobby</h2>
+        <p style="color: #ffd700;">Waiting for host to start...</p>
+        <button id="btn-start-race" class="btn" style="display:none; background:#00ff00; color:#000; border-color:#00ff00;" onclick="startRace()">Start Pre-Start Sequence!</button>
+    </div>
+</div>
+
+<div id="game-ui">
+    <button id="home-btn" onclick="location.reload()">🏠 Quit to Menu</button>
+
+    <div id="timer-display">WAITING</div>
+    <div id="start-msg">LOBBY</div>
+
+    <div id="ui">
+        <div style="font-size: 11px; letter-spacing: 1px;">SOG (SPEED)</div>
+        <div id="speedDisplay" class="stats">0.0 kn</div>
+        <div id="status" style="font-size: 14px; margin-top: 5px; font-weight: bold;">STEADY</div>
+        <div id="targetDisplay" class="course-tracker">TARGET: Start Line</div>
+
+        <div class="hint" id="keyboard-hints">
+            <b>ARROWS</b>: Steer<br>
+            <b>SPACE</b>: Brake (Luff)<br>
+            <b style="color:#00f2ff;">ENTER</b>: Auto-Tack<br>
+            <b style="color:#00ff00;">SHIFT</b>: Toggle Auto-Upwind
+        </div>
+    </div>
+
+    <div class="wind-indicator">
+        <div id="arrow">↓</div>
+    </div>
+
+    <div id="tutorial-ui">
+        <div id="tutorial-text"></div>
+    </div>
+
+    <div id="touch-controls">
+        <div class="touch-group">
+            <div class="touch-btn" id="btn-left">◀</div>
+            <div class="touch-btn" id="btn-right">▶</div>
+        </div>
+        <div class="touch-group">
+            <div class="touch-btn touch-action touch-luff" id="btn-luff">LUFF</div>
+            <div class="touch-btn touch-action touch-tack" id="btn-tack">TACK</div>
+            <div class="touch-btn touch-action touch-upwind" id="btn-upwind">UPWIND</div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script>
+    const socket = io();
+    let currentRoom = "";
+    let isHost = false;
+    let myBoatType = "monohull";
+    let windSpeedKnots = 15; 
+    const otherBoats = {};
+
+    let isSingleplayer = false, isTutorial = false, tutorialStep = 0, waitingForTutorial = false;
+    let ocsPenalty = false;
+
+    // --- Apply Mobile Toggle Check ---
+    function applyMobileToggle() {
+        if (document.getElementById('mobile-toggle').checked) {
+            document.getElementById('touch-controls').style.display = 'flex';
+            document.getElementById('keyboard-hints').style.display = 'none';
+        } else {
+            document.getElementById('touch-controls').style.display = 'none';
+        }
+    }
+
+    // --- Mode Select Logic ---
+    function startSingleplayer() {
+        isSingleplayer = true;
+        myBoatType = document.getElementById('boat-select').value;
+        windSpeedKnots = parseFloat(document.getElementById('single-wind-speed').value) || 15;
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'block';
+        applyMobileToggle(); // Check toggle before starting
+        spawnMyBoat(myBoatType);
+        raceStartTime = Date.now() + 15000; 
+        gameActive = true;
+    }
+
+    function startTutorial() {
+        isTutorial = true; windSpeedKnots = 15; 
+        myBoatType = document.getElementById('boat-select').value;
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'block';
+
+        applyMobileToggle(); // Check toggle before starting
+
+        document.getElementById('tutorial-ui').style.display = 'block';
+        document.getElementById('timer-display').style.display = 'none';
+        document.getElementById('start-msg').style.display = 'none';
+        document.getElementById('targetDisplay').style.display = 'none';
+
+        spawnMyBoat(myBoatType); myBoatGroup.position.set(0, 0, 0); 
+        gameActive = true; raceActive = true; tutorialStep = 1; updateTutorialText();
+    }
+
+    function updateTutorialText() {
+        const tText = document.getElementById('tutorial-text');
+        if (tutorialStep === 1) tText.innerHTML = "<b>Welcome Captain!</b><br>Let's learn to steer. Use the <b>Left & Right</b> buttons (or arrows) to steer.";
+        else if (tutorialStep === 2) tText.innerHTML = "<b>Sailing Downwind (Fast)</b><br>Steer until the wind arrow points straight DOWN. You will pick up speed!";
+        else if (tutorialStep === 3) tText.innerHTML = "<b>Braking (Luffing)</b><br>You are moving! To slow down, hold <b>LUFF</b> (or Spacebar) to let the sails out.";
+        else if (tutorialStep === 4) tText.innerHTML = "<b>Sailing Upwind</b><br>Tap <b>UPWIND</b> (or Shift). The crew will find the perfect angle!";
+        else if (tutorialStep === 5) tText.innerHTML = "<b>Tacking Through The Wind</b><br>While sailing upwind, tap <b>TACK</b> (or Enter) to swing through the wind.";
+        else if (tutorialStep === 6) tText.innerHTML = "<b>Master Sailor!</b><br>You are ready.<br><br><button class='btn' onclick='location.reload()'>Main Menu</button>";
+    }
+
+    function advanceTutorial(nextStep, delay = 2000) {
+        if (waitingForTutorial) return;
+        waitingForTutorial = true;
+        document.getElementById('tutorial-text').innerHTML += "<br><br><i style='color:#00ff00'>Perfect!</i>";
+        setTimeout(() => { tutorialStep = nextStep; waitingForTutorial = false; updateTutorialText(); }, delay);
+    }
+
+    // --- Lobby Logic ---
+    function showMenu(menuId) { document.querySelectorAll('.menu-box').forEach(m => m.style.display = 'none'); document.getElementById(menuId).style.display = 'block'; }
+    function openJoinMenu() { showMenu('menu-join'); socket.emit('getRooms'); }
+    function createRoom() {
+        const roomName = document.getElementById('host-room-name').value || "Regatta-" + Math.floor(Math.random()*1000);
+        const maxPlayers = document.getElementById('host-max-players').value;
+        windSpeedKnots = parseFloat(document.getElementById('host-wind-speed').value) || 15;
+        myBoatType = document.getElementById('boat-select').value;
+        socket.emit('createRoom', { roomName, maxPlayers, boatType: myBoatType });
+    }
+    function joinSpecificRoom(roomName) { myBoatType = document.getElementById('boat-select').value; socket.emit('joinRoom', { roomName, boatType: myBoatType }); }
+    function startRace() { socket.emit('startRace', currentRoom); }
+
+    // Socket Listeners
+    socket.on('roomList', (rooms) => {
+        const listDiv = document.getElementById('room-list'); listDiv.innerHTML = '';
+        if (rooms.length === 0) { listDiv.innerHTML = '<div style="color: #aaa; text-align: center;">No active rooms.</div>'; return; }
+        rooms.forEach(room => {
+            const div = document.createElement('div'); div.className = 'room-item';
+            div.innerHTML = `<b>${room.name}</b> <span style="float:right;">${room.players}/${room.max} Players</span>`;
+            if (!room.started && room.players < room.max) { div.onclick = () => joinSpecificRoom(room.name); } else { div.style.opacity = '0.5'; }
+            listDiv.appendChild(div);
+        });
+    });
+
+    socket.on('joinedLobby', (data) => {
+        currentRoom = data.roomName; isHost = data.isHost;
+        document.getElementById('lobby-title').innerText = "Room: " + currentRoom; showMenu('menu-lobby');
+        if (isHost) document.getElementById('btn-start-race').style.display = 'block';
+
+        applyMobileToggle(); // Check toggle before starting
+        spawnMyBoat(myBoatType); document.getElementById('ui-layer').style.background = 'transparent'; document.getElementById('game-ui').style.display = 'block';
+    });
+
+    socket.on('youAreHost', () => { isHost = true; document.getElementById('btn-start-race').style.display = 'block'; });
+    socket.on('startPreStart', () => { document.getElementById('ui-layer').style.display = 'none'; raceStartTime = Date.now() + 15000; gameActive = true; });
+    socket.on('currentPlayers', (players) => { Object.keys(players).forEach((id) => { if (id !== socket.id && !otherBoats[id]) addOtherBoat(id, players[id]); }); });
+    socket.on('newPlayer', (data) => { if (!otherBoats[data.id]) addOtherBoat(data.id, data.playerInfo); });
+    socket.on('playerMoved', (data) => {
+        if (data.playerInfo.windSpeed !== undefined) windSpeedKnots = data.playerInfo.windSpeed;
+        if (otherBoats[data.id]) {
+            otherBoats[data.id].position.set(data.playerInfo.x, 0, data.playerInfo.z);
+            otherBoats[data.id].rotation.y = data.playerInfo.rotation;
+            if (data.playerInfo.heeling) otherBoats[data.id].rotation.z = data.playerInfo.heeling;
+        }
+    });
+    socket.on('playerDisconnected', (id) => { if (otherBoats[id]) { scene.remove(otherBoats[id]); delete otherBoats[id]; } });
+
+    // --- Scene Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xaaccff); scene.fog = new THREE.Fog(0xaaccff, 50, 300);
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(50, 100, 50); scene.add(sun); scene.add(new THREE.AmbientLight(0x6688aa, 0.8));
+
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshPhongMaterial({ color: 0x003355, specular: 0x555555, shininess: 80 }));
+    water.rotation.x = -Math.PI / 2; scene.add(water);
+    const land = new THREE.Mesh(new THREE.RingGeometry(180, 250, 64), new THREE.MeshPhongMaterial({ color: 0x33aa55, flatShading: true }));
+    land.rotation.x = -Math.PI / 2; land.position.y = 0.1; scene.add(land);
+
+    // Environment Objects
+    const windLines = [];
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,3)]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 }); 
+    for(let i = 0; i < 100; i++) {
+        const line = new THREE.Line(lineGeo, lineMat); line.position.set((Math.random() - 0.5) * 150 + 50, 0.1, (Math.random() - 0.5) * 150 + 50); scene.add(line); windLines.push(line);
+    }
+
+    const wakeParticles = []; const wakeGeo = new THREE.PlaneGeometry(1.5, 1.5); const wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
+    for(let i = 0; i < 50; i++) {
+        const p = new THREE.Mesh(wakeGeo, wakeMat.clone()); p.rotation.x = -Math.PI / 2; p.position.y = 0.1; p.visible = false; scene.add(p); wakeParticles.push({ mesh: p, life: 0 });
+    }
+    let wakeIndex = 0;
+
+    function createBuoy(color, x, z) { const mesh = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 3, 16), new THREE.MeshPhongMaterial({ color: color })); mesh.position.set(x, 1.5, z); scene.add(mesh); }
+    createBuoy(0x00ff00, 40, 80);  createBuoy(0x00ff00, 70, 80); 
+    createBuoy(0xffff00, 55, -80); createBuoy(0xffff00, -55, -80); createBuoy(0xffff00, -55, 0); 
+    createBuoy(0xff0000, -40, 80); createBuoy(0xff0000, -70, 80);
+
+    const waypoints = [ { name: "Start Line", x: 55, z: 80, radius: 20 }, { name: "Mark 1", x: 55, z: -80, radius: 15 }, { name: "Mark 2", x: -55, z: -80, radius: 15 }, { name: "Mark 3", x: -55, z: 0, radius: 15 }, { name: "Finish Line", x: -55, z: 80, radius: 20 } ];
+    let currentWpIndex = 0;
+
+    // Boat Builder
+    function createBoatModel(type, hullColor) {
+        const group = new THREE.Group(); const material = new THREE.MeshPhongMaterial({ color: hullColor });
+        if (type === 'catamaran') {
+            const hullGeo = new THREE.CylinderGeometry(0.25, 0.25, 6, 16); hullGeo.rotateX(Math.PI / 2);
+            const leftHull = new THREE.Mesh(hullGeo, material); leftHull.position.set(-1.4, 0.3, 0);
+            const rightHull = new THREE.Mesh(hullGeo, material); rightHull.position.set(1.4, 0.3, 0);
+            const tramp = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 4), new THREE.MeshPhongMaterial({ color: 0x111111, side: THREE.DoubleSide })); tramp.rotation.x = -Math.PI / 2; tramp.position.y = 0.5;
+            group.add(leftHull, rightHull, tramp);
+        } else {
+            const shape = new THREE.Shape(); shape.moveTo(0, -2); shape.bezierCurveTo(-0.8, -1, -0.8, 1.5, -0.6, 2); shape.lineTo(0.6, 2); shape.bezierCurveTo(0.8, 1.5, 0.8, -1, 0, -2); 
+            const hull = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.6, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.05, bevelThickness: 0.05 }), material); hull.rotation.x = -Math.PI / 2; hull.position.y = 0.6; group.add(hull);
+        }
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5), new THREE.MeshPhongMaterial({ color: 0x333333 })); mast.position.set(0, 3.1, 0.5); group.add(mast);
+        const sailPivot = new THREE.Group(); sailPivot.position.set(0, 1.2, 0.5); group.add(sailPivot); 
+        const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4), new THREE.MeshPhongMaterial({ color: 0x444444 })); boom.rotation.x = Math.PI / 2; boom.position.set(0, 0, -1.2); sailPivot.add(boom);
+        const sailShape = new THREE.Shape(); sailShape.moveTo(0, 0); sailShape.lineTo(0, 3.8); sailShape.lineTo(2.4, 0); sailShape.lineTo(0, 0); 
+        const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), new THREE.MeshPhongMaterial({ color: 0xdddddd, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })); sail.rotation.y = Math.PI / 2; sailPivot.add(sail);
+        return { mainGroup: group, pivot: sailPivot };
+    }
+
+    let myBoatGroup, mySailPivot;
+    function spawnMyBoat(type) {
+        const models = createBoatModel(type, 0xffffff); myBoatGroup = models.mainGroup; mySailPivot = models.pivot;
+        myBoatGroup.position.set(55 + (Math.random() * 10 - 5), 0, 110); scene.add(myBoatGroup);
+        boatState.speedMultiplier = type === 'catamaran' ? 1.6 : 1.0; boatState.heelMultiplier = type === 'catamaran' ? 0.3 : 1.0; 
+    }
+    function addOtherBoat(id, info) {
+        const models = createBoatModel(info.type, 0xffcc00); const ghost = models.mainGroup;
+        ghost.position.set(info.x, 0, info.z); ghost.rotation.y = info.rotation; if (info.heeling) ghost.rotation.z = info.heeling; scene.add(ghost); otherBoats[id] = ghost;
+    }
+
+    // --- Inputs & Variables ---
+    let gameActive = false;
+    const boatState = { rotation: Math.PI, velocity: 0, sailAngle: 0, targetSailAngle: 0, heeling: 0, speedMultiplier: 1.0, heelMultiplier: 1.0 };
+    const keys = {};
+    let tackCooldown = 0, autoUpwind = false, isTacking = false, tackDirection = 0;
+
+    // Keyboard Listeners
+    window.addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') autoUpwind = !autoUpwind; });
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    // --- MOBILE TOUCH LISTENERS ---
+    function setupTouchBtn(id, keyCode, toggle = false) {
+        const btn = document.getElementById(id);
+        if(!btn) return;
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (toggle) { autoUpwind = !autoUpwind; } 
+            else { keys[keyCode] = true; }
+        });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); if (!toggle) keys[keyCode] = false; });
+        btn.addEventListener('contextmenu', e => e.preventDefault()); 
+    }
+    setupTouchBtn('btn-left', 'ArrowLeft');
+    setupTouchBtn('btn-right', 'ArrowRight');
+    setupTouchBtn('btn-luff', 'Space');
+    setupTouchBtn('btn-tack', 'Enter');
+    setupTouchBtn('btn-upwind', 'ShiftLeft', true);
+
+    camera.position.set(55, 15, 130); 
+
+    // --- Core Game Loop ---
+    function update() {
+        if (!myBoatGroup) return; 
+        if (!gameActive) { camera.lookAt(myBoatGroup.position); return; }
+
+        const timeRemaining = (raceStartTime - Date.now()) / 1000;
+        if (!isTutorial && timeRemaining > 0 && !raceActive) {
+            document.getElementById('timer-display').innerText = `00:${Math.ceil(timeRemaining).toString().padStart(2, '0')}`;
+        } else if (!isTutorial && !uiHidden) {
+            document.getElementById('timer-display').innerText = "RACE!"; document.getElementById('timer-display').style.color = "#00ff00";
+            document.getElementById('start-msg').innerText = "CROSS THE LINE!"; document.getElementById('start-msg').style.color = "#00ff00";
+            raceActive = true;
+            setTimeout(() => { document.getElementById('timer-display').style.display = 'none'; document.getElementById('start-msg').style.display = 'none'; uiHidden = true; }, 3000);
+        }
+
+        const dirZ = Math.cos(boatState.rotation), dirX = Math.sin(boatState.rotation);
+        const relWindAngle = Math.atan2(-dirX, -dirZ), absWindAngle = Math.abs(relWindAngle);
+        document.getElementById('arrow').style.transform = `rotate(${relWindAngle}rad)`;
+
+        if (isTutorial && !waitingForTutorial) {
+            if (tutorialStep === 1 && (keys['ArrowLeft'] || keys['ArrowRight'])) advanceTutorial(2, 2000);
+            else if (tutorialStep === 2 && absWindAngle > 2.8 && boatState.velocity > 0.02) advanceTutorial(3, 3500);
+            else if (tutorialStep === 3 && keys['Space'] && boatState.velocity < 0.01) advanceTutorial(4, 2500);
+            else if (tutorialStep === 4 && autoUpwind) advanceTutorial(5, 4000);
+            else if (tutorialStep === 5 && isTacking) advanceTutorial(6, 4000);
+        }
+
+        if (tackCooldown > 0) tackCooldown--;
+        if (keys['Enter'] && tackCooldown === 0 && absWindAngle < 1.6 && !isTacking) { isTacking = true; tackCooldown = 180; autoUpwind = false; tackDirection = relWindAngle > 0 ? -1 : 1; }
+
+        if (isTacking) {
+            boatState.velocity *= 0.985; boatState.rotation += tackDirection * 0.025; 
+            if ((tackDirection === -1 && relWindAngle < -0.8) || (tackDirection === 1 && relWindAngle > 0.8)) { isTacking = false; tackDirection = 0; }
+        } else {
+            if (autoUpwind) boatState.rotation += ((relWindAngle >= 0 ? 0.75 : -0.75) - relWindAngle) * 0.05;  
+            else { if (keys['ArrowLeft']) boatState.rotation += 0.02; if (keys['ArrowRight']) boatState.rotation -= 0.02; }
+        }
+
+        let power = 0;
+        const basePower = windSpeedKnots / 750; 
+        const windPowerMultiplier = (Math.sin(absWindAngle) * 0.8) + (Math.sin(absWindAngle / 2) * 0.5); 
+
+        if (keys['Space']) {
+            boatState.targetSailAngle = Math.min(1.5, Math.max(-1.5, -relWindAngle));
+            document.getElementById('status').innerText = "LUFFING"; document.getElementById('status').style.color = "#aaaaaa";
+        } else if (absWindAngle < 0.5 && !isTacking) { 
+            boatState.targetSailAngle = 0; boatState.velocity *= 0.9; 
+            document.getElementById('status').innerText = "IN IRONS"; document.getElementById('status').style.color = "#ff4d4d";
+        } else {
+            boatState.targetSailAngle = Math.min(1.2, Math.max(-1.2, -relWindAngle * 0.6));
+            power = windPowerMultiplier * basePower * boatState.speedMultiplier; 
+            if (isTacking) { document.getElementById('status').innerText = "TACKING"; document.getElementById('status').style.color = "#ffd700"; } 
+            else if (autoUpwind) { document.getElementById('status').innerText = "AUTO CLOSE-HAULED"; document.getElementById('status').style.color = "#00ff00"; } 
+            else { document.getElementById('status').innerText = absWindAngle < 1.8 ? "CLOSE HAULED" : "DOWNWIND"; document.getElementById('status').style.color = "#00f2ff"; }
+        }
+
+        boatState.sailAngle += (boatState.targetSailAngle - boatState.sailAngle) * 0.1; mySailPivot.rotation.y = boatState.sailAngle;
+        boatState.velocity = (boatState.velocity + power) * 0.96; if (boatState.velocity < 0.001) boatState.velocity = 0; 
+        myBoatGroup.position.x += dirX * boatState.velocity; myBoatGroup.position.z += dirZ * boatState.velocity; myBoatGroup.rotation.y = boatState.rotation;
+        boatState.heeling += (Math.max(-0.25, Math.min(0.25, boatState.targetSailAngle * (boatState.velocity * 5))) * boatState.heelMultiplier - boatState.heeling) * 0.05; myBoatGroup.rotation.z = boatState.heeling;
+
+        if (boatState.velocity > 0.05 && Math.random() < 0.6) {
+            const p = wakeParticles[wakeIndex]; p.life = 1.0;
+            p.mesh.position.set(myBoatGroup.position.x + dirX * -2.2 + (Math.random() - 0.5) * 0.8, 0.1, myBoatGroup.position.z + dirZ * -2.2 + (Math.random() - 0.5) * 0.8);
+            p.mesh.scale.set(1, 1, 1); p.mesh.rotation.z = Math.random() * Math.PI; p.mesh.visible = true; wakeIndex = (wakeIndex + 1) % wakeParticles.length;
+        }
+        wakeParticles.forEach(p => { if (p.life > 0) { p.life -= 0.015; p.mesh.scale.x += 0.03; p.mesh.scale.y += 0.03; p.mesh.material.opacity = p.life * 0.5; if (p.life <= 0) p.mesh.visible = false; } });
+
+        const startLineZ = 80; const startLeftX = 40; const startRightX = 70;
+        if (!isTutorial && currentWpIndex < waypoints.length) {
+            if (currentWpIndex === 0) {
+                if (!raceActive) {
+                    if (myBoatGroup.position.z < startLineZ) { ocsPenalty = true; document.getElementById('targetDisplay').innerText = "I-FLAG: OCS! RETURN AROUND ENDS!"; document.getElementById('targetDisplay').style.color = "#ff0000"; } 
+                    else if (!ocsPenalty) { document.getElementById('targetDisplay').innerText = "HOLD POSITION BEHIND LINE..."; document.getElementById('targetDisplay').style.color = "#ffd700"; }
+                    if (ocsPenalty && myBoatGroup.position.z >= startLineZ && (myBoatGroup.position.x <= startLeftX || myBoatGroup.position.x >= startRightX)) ocsPenalty = false;
+                } else {
+                    if (ocsPenalty) {
+                        document.getElementById('targetDisplay').innerText = "PENALTY! ROUND THE END TO CLEAR!"; document.getElementById('targetDisplay').style.color = "#ff0000";
+                        if (myBoatGroup.position.z >= startLineZ && (myBoatGroup.position.x <= startLeftX || myBoatGroup.position.x >= startRightX)) ocsPenalty = false;
+                    } else {
+                        document.getElementById('targetDisplay').innerText = "RACING! CROSS THE LINE!"; document.getElementById('targetDisplay').style.color = "#00ff00";
+                        if (myBoatGroup.position.z < startLineZ && myBoatGroup.position.x > startLeftX && myBoatGroup.position.x < startRightX) currentWpIndex = 1; 
+                    }
+                }
+            } else {
+                const wp = waypoints[currentWpIndex]; const dist = Math.hypot(myBoatGroup.position.x - wp.x, myBoatGroup.position.z - wp.z);
+                if (dist < wp.radius) { currentWpIndex++; if (currentWpIndex >= waypoints.length) { document.getElementById('targetDisplay').innerText = "🏁 COURSE COMPLETE! 🏁"; document.getElementById('targetDisplay').style.color = "#00ff00"; } } 
+                else { document.getElementById('targetDisplay').innerText = `TARGET: ${wp.name} (${Math.round(dist)}m)`; document.getElementById('targetDisplay').style.color = "#00f2ff"; }
+            }
+        }
+
+        const tCamX = myBoatGroup.position.x - dirX * 16, tCamY = 9, tCamZ = myBoatGroup.position.z - dirZ * 16;
+        camera.position.x += (tCamX - camera.position.x) * 0.05; camera.position.y += (tCamY - camera.position.y) * 0.05; camera.position.z += (tCamZ - camera.position.z) * 0.05; camera.lookAt(myBoatGroup.position);
+
+        const animSpeed = Math.max(0.1, windSpeedKnots / 30);
+        windLines.forEach(line => { line.position.z += animSpeed; if (line.position.z > myBoatGroup.position.z + 50) { line.position.set((Math.random() - 0.5) * 120 + myBoatGroup.position.x, 0.1, (Math.random() - 0.5) * 120 + myBoatGroup.position.z - 50); } });
+        document.getElementById('speedDisplay').innerHTML = (boatState.velocity * 40).toFixed(1) + " kn";
+
+        if (!isSingleplayer && !isTutorial && boatState.velocity > 0.001) {
+            socket.emit('playerMovement', { roomName: currentRoom, movementData: { x: myBoatGroup.position.x, z: myBoatGroup.position.z, rotation: boatState.rotation, heeling: boatState.heeling, windSpeed: isHost ? windSpeedKnots : undefined } });
+        }
+    }
+
+    function animate() { requestAnimationFrame(animate); update(); renderer.render(scene, camera); }
+    window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    animate();
+</script>
+</body>
+</html>
